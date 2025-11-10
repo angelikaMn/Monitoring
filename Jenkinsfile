@@ -4,11 +4,11 @@ pipeline {
 
   triggers {
     githubPush()
-    pollSCM('H/2 * * * *')  // fallback
+    pollSCM('H/2 * * * *')  // fallback polling
   }
 
   environment {
-    APP_DIR = "/home/Monitoring"
+    VM_APP_DIR = "/home/Monitoring"
     VENV = "/home/Monitoring/.venv"
     SERVICE = "monitoring"
     SCRIPT = "monitoring.py"
@@ -16,75 +16,163 @@ pipeline {
   }
 
   stages {
-    stage('Checkout') {
-      steps {
-        echo "[CHECKOUT] Fetching repo..."
-        checkout scm
-        sh 'ls -la'
-      }
-    }
 
-    stage('Sync to App Dir') {
+    /* ----------------------------------------------------
+       CI START WHATSAPP NOTIF
+    ---------------------------------------------------- */
+    stage('Notify Build Start') {
       steps {
         sh '''
-          set -e
-          echo "[SYNC] Copying script to $APP_DIR"
-          install -m 644 monitoring.py $APP_DIR/monitoring.py
-          # keep your .env untouched on server
-          ls -l $APP_DIR/monitoring.py
+          . /home/Monitoring/.venv/bin/activate
+          python3 - << 'EOF'
+from dotenv import load_dotenv
+import os, requests, socket, datetime
+
+load_dotenv('/home/Monitoring/.env')
+token = os.getenv("FONNTE_TOKEN")
+targets = [t.strip() for t in os.getenv("FONNTE_TARGETS","").split(',') if t.strip()]
+
+hostname = socket.gethostname()
+ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+msg = f"🚀 *CI Deploy Started*\nServer: {hostname}\nTime: {ts}"
+
+for t in targets:
+    requests.post("https://api.fonnte.com/send",
+        headers={"Authorization": token},
+        data={"target": t, "message": msg})
+EOF
         '''
       }
     }
 
-    stage('Deps (venv)') {
+    /* ----------------------------------------------------
+       CHECKOUT CODE
+    ---------------------------------------------------- */
+    stage('Checkout') {
+      steps {
+        checkout scm
+        sh 'echo "[CHECKOUT] Files:" && ls -la'
+      }
+    }
+
+    /* ----------------------------------------------------
+       SYNC CODE TO SERVER DIR
+    ---------------------------------------------------- */
+    stage('Sync to Server App Directory') {
+      steps {
+        sh '''
+          set -e
+          echo "[SYNC] Updating script..."
+          install -m 644 monitoring.py $VM_APP_DIR/monitoring.py
+          echo "[SYNC] Done."
+        '''
+      }
+    }
+
+    /* ----------------------------------------------------
+       ENSURE VENV + DEPENDENCIES
+    ---------------------------------------------------- */
+    stage('Ensure Python Environment') {
       steps {
         sh '''
           set -e
           if [ ! -x "$VENV/bin/python" ]; then
-            echo "[VENV] creating..."
+            echo "[VENV] Creating virtualenv..."
             python3 -m venv "$VENV"
           fi
           "$VENV/bin/pip" install --upgrade pip
           "$VENV/bin/pip" install requests google-generativeai python-dotenv
-          echo "[VENV] Python: $("$VENV/bin/python" -V)"
         '''
       }
     }
 
-    stage('Restart service') {
+    /* ----------------------------------------------------
+       RESTART SYSTEMD SERVICE
+    ---------------------------------------------------- */
+    stage('Restart Monitoring Service') {
       steps {
         sh '''
           set -e
-          echo "[SYSTEMD] daemon-reload"
+          echo "[SYSTEMD] Restarting $SERVICE"
           sudo systemctl daemon-reload
-          echo "[SYSTEMD] restart $SERVICE"
           sudo systemctl restart "$SERVICE"
           sleep 2
           sudo systemctl is-active "$SERVICE"
-          echo "[SYSTEMD] status:"
-          sudo systemctl status "$SERVICE" --no-pager || true
         '''
       }
     }
 
-    stage('Health & Logs snapshot') {
+    /* ----------------------------------------------------
+       DISPLAY & ARCHIVE LOG SNAPSHOT
+    ---------------------------------------------------- */
+    stage('Fetch Logs') {
       steps {
         sh '''
-          set -e
-          echo "[HEALTH] journalctl tail"
+          echo "[LOG] Recent logs:"
           sudo journalctl -u "$SERVICE" -n 200 --no-pager || true
-          echo "[HEALTH] logfile tail"
-          sudo tail -n 200 "$LOGFILE" || true
+          sudo journalctl -u "$SERVICE" -n 500 --no-pager > jenkins_service_tail.txt || true
+        '''
+      }
+    }
+
+    /* ----------------------------------------------------
+       SUCCESS CI NOTIFICATION
+    ---------------------------------------------------- */
+    stage('Notify Success') {
+      when { success() }
+      steps {
+        sh '''
+          . /home/Monitoring/.venv/bin/activate
+          python3 - << 'EOF'
+from dotenv import load_dotenv
+import os, requests, socket, datetime
+
+load_dotenv('/home/Monitoring/.env')
+token = os.getenv("FONNTE_TOKEN")
+targets = [t.strip() for t in os.getenv("FONNTE_TARGETS","").split(',') if t.strip()]
+
+hostname = socket.gethostname()
+ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+msg = f"✅ *CI Deploy Success*\nServer: {hostname}\nTime: {ts}"
+
+for t in targets:
+    requests.post("https://api.fonnte.com/send",
+        headers={"Authorization": token},
+        data={"target": t, "message": msg})
+EOF
         '''
       }
     }
   }
 
+  /* ----------------------------------------------------
+     FAILURE NOTIFICATION + LOG ARCHIVE
+  ---------------------------------------------------- */
   post {
     always {
-      echo "[POST] Archiving latest service log snapshot"
-      sh 'sudo journalctl -u "$SERVICE" -n 500 --no-pager > jenkins_service_tail.txt || true'
       archiveArtifacts artifacts: 'jenkins_service_tail.txt', allowEmptyArchive: true
+    }
+    failure {
+      sh '''
+        . /home/Monitoring/.venv/bin/activate
+        python3 - << 'EOF'
+from dotenv import load_dotenv
+import os, requests, socket, datetime
+
+load_dotenv('/home/Monitoring/.env')
+token = os.getenv("FONNTE_TOKEN")
+targets = [t.strip() for t in os.getenv("FONNTE_TARGETS","").split(',') if t.strip()]
+
+hostname = socket.gethostname()
+ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+msg = f"❌ *CI Deploy Failed*\nServer: {hostname}\nTime: {ts}"
+
+for t in targets:
+    requests.post("https://api.fonnte.com/send",
+        headers={"Authorization": token},
+        data={"target": t, "message": msg})
+EOF
+      '''
     }
   }
 }
