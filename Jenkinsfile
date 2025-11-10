@@ -8,22 +8,21 @@ pipeline {
   }
 
   environment {
-    VM_APP_DIR = "/home/Monitoring"
+    APP_DIR = "/home/Monitoring"
     VENV = "/home/Monitoring/.venv"
-    SERVICE = "monitoring"
+    SERVICE = "monitoring.service"
     SCRIPT = "monitoring.py"
-    LOGFILE = "/var/log/monitoring.log"
   }
 
   stages {
 
-    /* ----------------------------------------------------
-       CI START WHATSAPP NOTIF
-    ---------------------------------------------------- */
+    /* -------------------------------------------
+       🚀 CI START NOTIFICATION
+    -------------------------------------------- */
     stage('Notify Build Start') {
       steps {
         sh '''
-          . /home/Monitoring/.venv/bin/activate
+          . /home/Monitoring/.venv/bin/activate || true
           python3 - << 'EOF'
 from dotenv import load_dotenv
 import os, requests, socket, datetime
@@ -37,47 +36,50 @@ ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 msg = f"🚀 *CI Deploy Started*\nServer: {hostname}\nTime: {ts}"
 
 for t in targets:
-    requests.post("https://api.fonnte.com/send",
-        headers={"Authorization": token},
-        data={"target": t, "message": msg})
+    try:
+        requests.post("https://api.fonnte.com/send",
+            headers={"Authorization": token},
+            data={"target": t, "message": msg})
+    except Exception as e:
+        print("Send failed:", e)
 EOF
         '''
       }
     }
 
-    /* ----------------------------------------------------
-       CHECKOUT CODE
-    ---------------------------------------------------- */
+    /* -------------------------------------------
+       ✅ CHECKOUT SOURCE
+    -------------------------------------------- */
     stage('Checkout') {
       steps {
         checkout scm
-        sh 'echo "[CHECKOUT] Files:" && ls -la'
+        sh 'echo "[CHECKOUT] Listing files:" && ls -la'
       }
     }
 
-    /* ----------------------------------------------------
-       SYNC CODE TO SERVER DIR
-    ---------------------------------------------------- */
-    stage('Sync to Server App Directory') {
+    /* -------------------------------------------
+       📦 SYNC FILE TO SERVER DIRECTORY
+    -------------------------------------------- */
+    stage('Deploy Script to Server') {
       steps {
         sh '''
           set -e
-          echo "[SYNC] Updating script..."
-          install -m 644 monitoring.py $VM_APP_DIR/monitoring.py
-          echo "[SYNC] Done."
+          echo "[DEPLOY] Updating $SCRIPT in $APP_DIR"
+          install -m 644 $SCRIPT $APP_DIR/$SCRIPT
+          echo "[DEPLOY] Done."
         '''
       }
     }
 
-    /* ----------------------------------------------------
-       ENSURE VENV + DEPENDENCIES
-    ---------------------------------------------------- */
-    stage('Ensure Python Environment') {
+    /* -------------------------------------------
+       🐍 ENSURE PYTHON ENV
+    -------------------------------------------- */
+    stage('Setup Python Environment') {
       steps {
         sh '''
           set -e
           if [ ! -x "$VENV/bin/python" ]; then
-            echo "[VENV] Creating virtualenv..."
+            echo "[VENV] Creating virtual environment..."
             python3 -m venv "$VENV"
           fi
           "$VENV/bin/pip" install --upgrade pip
@@ -86,14 +88,14 @@ EOF
       }
     }
 
-    /* ----------------------------------------------------
-       RESTART SYSTEMD SERVICE
-    ---------------------------------------------------- */
+    /* -------------------------------------------
+       🔁 RESTART SYSTEMD SERVICE
+    -------------------------------------------- */
     stage('Restart Monitoring Service') {
       steps {
         sh '''
           set -e
-          echo "[SYSTEMD] Restarting $SERVICE"
+          echo "[SYSTEMD] Restarting service $SERVICE"
           sudo systemctl daemon-reload
           sudo systemctl restart "$SERVICE"
           sleep 2
@@ -102,28 +104,33 @@ EOF
       }
     }
 
-    /* ----------------------------------------------------
-       DISPLAY & ARCHIVE LOG SNAPSHOT
-    ---------------------------------------------------- */
+    /* -------------------------------------------
+       📄 FETCH & ARCHIVE LOGS
+    -------------------------------------------- */
     stage('Fetch Logs') {
       steps {
         sh '''
-          echo "[LOG] Recent logs:"
+          echo "[LOG] Showing last 200 lines:"
           sudo journalctl -u "$SERVICE" -n 200 --no-pager || true
           sudo journalctl -u "$SERVICE" -n 500 --no-pager > jenkins_service_tail.txt || true
         '''
       }
     }
+  }
 
-    /* ----------------------------------------------------
-       SUCCESS CI NOTIFICATION
-    ---------------------------------------------------- */
-    stage('Notify Success') {
-      when { success() }
-      steps {
-        sh '''
-          . /home/Monitoring/.venv/bin/activate
-          python3 - << 'EOF'
+  /* -------------------------------------------
+     ✅ POST BUILD: SUCCESS / FAILURE NOTIF
+  -------------------------------------------- */
+  post {
+
+    always {
+      archiveArtifacts artifacts: 'jenkins_service_tail.txt', allowEmptyArchive: true
+    }
+
+    success {
+      sh '''
+        . /home/Monitoring/.venv/bin/activate
+        python3 - << 'EOF'
 from dotenv import load_dotenv
 import os, requests, socket, datetime
 
@@ -140,18 +147,9 @@ for t in targets:
         headers={"Authorization": token},
         data={"target": t, "message": msg})
 EOF
-        '''
-      }
+      '''
     }
-  }
 
-  /* ----------------------------------------------------
-     FAILURE NOTIFICATION + LOG ARCHIVE
-  ---------------------------------------------------- */
-  post {
-    always {
-      archiveArtifacts artifacts: 'jenkins_service_tail.txt', allowEmptyArchive: true
-    }
     failure {
       sh '''
         . /home/Monitoring/.venv/bin/activate
