@@ -17,12 +17,39 @@ pipeline {
   stages {
 
     /* -------------------------------------------
-       🚀 CI START WHATSAPP NOTIF
+       ✅ CHECKOUT REPOSITORY
+    -------------------------------------------- */
+    stage('Checkout') {
+      steps {
+        checkout scm
+        sh 'ls -la'
+      }
+    }
+
+    /* -------------------------------------------
+       🐍 ENSURE PYTHON ENV + DEPENDENCIES
+    -------------------------------------------- */
+    stage('Setup Python Environment') {
+      steps {
+        sh '''
+          if [ ! -x "$VENV/bin/python" ]; then
+            echo "[VENV] Creating virtual environment..."
+            python3 -m venv "$VENV"
+          fi
+
+          "$VENV/bin/pip" install --upgrade pip
+          "$VENV/bin/pip" install requests google-generativeai python-dotenv
+        '''
+      }
+    }
+
+    /* -------------------------------------------
+       🚀 CI START NOTIFICATION (NOW SAFE)
     -------------------------------------------- */
     stage('Notify Build Start') {
       steps {
         sh '''
-          . "$VENV/bin/activate" || true
+          . "$VENV/bin/activate"
           python3 - << 'EOF'
 from dotenv import load_dotenv
 import os, requests, socket, datetime
@@ -48,44 +75,18 @@ EOF
     }
 
     /* -------------------------------------------
-       ✅ CHECKOUT SOURCE
-    -------------------------------------------- */
-    stage('Checkout') {
-      steps {
-        checkout scm
-        sh 'ls -la'
-      }
-    }
-
-    /* -------------------------------------------
-       📦 SYNC FILES
+       📦 DEPLOY SCRIPT TO SERVER
     -------------------------------------------- */
     stage('Deploy File') {
       steps {
         sh '''
           install -m 644 $SCRIPT $APP_DIR/$SCRIPT
-          echo "[DEPLOY] Script updated."
         '''
       }
     }
 
     /* -------------------------------------------
-       🐍 PYTHON ENV
-    -------------------------------------------- */
-    stage('Setup Python Environment') {
-      steps {
-        sh '''
-          if [ ! -x "$VENV/bin/python" ]; then
-            python3 -m venv "$VENV"
-          fi
-          "$VENV/bin/pip" install --upgrade pip
-          "$VENV/bin/pip" install requests google-generativeai python-dotenv
-        '''
-      }
-    }
-
-    /* -------------------------------------------
-       🔁 RESTART SERVICE
+       🔁 RESTART SYSTEMD SERVICE
     -------------------------------------------- */
     stage('Restart Monitoring Service') {
       steps {
@@ -99,7 +100,7 @@ EOF
     }
 
     /* -------------------------------------------
-       📄 GET LOGS
+       📄 CAPTURE LOGS FOR CI DOC
     -------------------------------------------- */
     stage('Fetch Logs') {
       steps {
@@ -111,7 +112,7 @@ EOF
   }
 
   /* -------------------------------------------
-     ✅ POST - SUCCESS / FAILURE NOTIFICATIONS
+     ✅ POST BUILD NOTIFICATIONS
   -------------------------------------------- */
   post {
 
