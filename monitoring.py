@@ -21,6 +21,7 @@ FONNTE_TOKEN = os.getenv("FONNTE_TOKEN")
 FONNTE_TARGETS = os.getenv("FONNTE_TARGETS", "").split(",")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MONITORED_USERS = [u.strip() for u in os.getenv("MONITORED_USERS", "angel").split(",") if u.strip()]
 
 # ------------------------------------------------------------
 # Basic Config
@@ -227,6 +228,10 @@ def main():
 
         event = parse_line(line)
         if not event:
+            continue
+
+        # Filter: only monitor specific usernames (ignore bots)
+        if MONITORED_USERS and event.get("user") not in MONITORED_USERS:
             continue
 
         key = (event["type"], event.get("user"), event.get("ip"))
