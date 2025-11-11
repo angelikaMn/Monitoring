@@ -111,13 +111,13 @@ def format_message(event: dict, analysis: str) -> str:
     ts = event["ts"]
 
     if msg_type == "success":
-        header = f"✅ SSH LOGIN: {user} dari {ip} @ {HOST} {ts}"
+        header = f"✅ *SSH LOGIN BERHASIL*\n[{ip}] [{user}]\nServer: {HOST}\nTime: {ts}"
     elif msg_type == "fail":
-        header = f"⚠️ SSH LOGIN GAGAL: {user} dari {ip} @ {HOST} {ts}"
+        header = f"⚠️ *SSH LOGIN GAGAL / BRUTE FORCE*\n[{ip}] [{user}]\nServer: {HOST}\nTime: {ts}"
     elif msg_type == "session":
-        header = f"ℹ️ SESSION OPEN: {user} @ {HOST} {ts}"
+        header = f"ℹ️ *SESSION OPENED*\n[{ip}] [{user}]\nServer: {HOST}\nTime: {ts}"
     else:
-        header = f"[SSH] Event {msg_type}"
+        header = f"[{ip}] [{user}] Event: {msg_type}"
 
     return f"{header}\n\nAnalisis:\n{analysis}\n\nDetail:\n{event['raw']}"
 
@@ -234,6 +234,7 @@ def main():
 
         # DEDUP
         if key in last_sent and now - last_sent[key] < DEDUP_TTL:
+            logging.debug("[%s] [%s] Skipped (dedup)", event.get("ip", "-"), event.get("user", "-"))
             continue
 
         # Track fail attempts
@@ -246,14 +247,22 @@ def main():
 
             if len(q) >= FAIL_THRESHOLD:
                 # Brute force detected - send alert
+                logging.warning("[%s] [%s] BRUTE FORCE DETECTED - %d attempts in %ds",
+                               event["ip"], event["user"], len(q), FAIL_WINDOW_SEC)
                 summary = (
                     f"{len(q)} gagal login dari {event['ip']} dalam {FAIL_WINDOW_SEC}s"
                 )
             else:
                 # Single failed login - skip alert
+                logging.info("[%s] [%s] Failed login attempt (%d/%d)",
+                            event["ip"], event["user"], len(q), FAIL_THRESHOLD)
                 continue
 
         else:
+            if event["type"] == "success":
+                logging.info("[%s] [%s] Successful SSH login", event["ip"], event["user"])
+            elif event["type"] == "session":
+                logging.info("[%s] [%s] Session opened", event["ip"], event["user"])
             summary = f"{event['type']} {event.get('user')} {event.get('ip', '-')}"
 
         # AI Evaluation
