@@ -135,7 +135,7 @@ Username: {user}
 IP: {ip}
 Time: {ts}
 
----ANALISIS LLM---
+---ANALISIS OLEH GEMINI LLM---
 {analysis}"""
 
     return body
