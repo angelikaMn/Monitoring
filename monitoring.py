@@ -78,31 +78,37 @@ def send_whatsapp(message: str):
             logging.warning("Fonnte send error: %s", e)
 
 
-def gemini_analysis(text: str, timeout: float = 5.0):
+def gemini_analysis(text: str, timeout: float = 10.0):
     """Ask Gemini for short risk evaluation."""
     if not GEMINI_API_KEY:
+        logging.debug("Gemini API key not configured")
         return "-"
 
-    import google.generativeai as genai
-
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL)
-
-    prompt = (
-        "Berikan analisis singkat terhadap kejadian keamanan berikut.\n"
-        "Format:\n"
-        "*Tingkat Risiko:* <Low|Medium|High>\n"
-        "*Alasan:* <1-3 kalimat>\n\n"
-        f"Peristiwa: {text}"
-    )
-
     try:
+        import google.generativeai as genai
+
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel(GEMINI_MODEL)
+
+        prompt = (
+            "Berikan analisis singkat terhadap kejadian keamanan berikut.\n"
+            "Format:\n"
+            "*Tingkat Risiko:* <Low|Medium|High>\n"
+            "*Alasan:* <1-3 kalimat>\n\n"
+            f"Peristiwa: {text}"
+        )
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
             future = ex.submit(model.generate_content, prompt)
             resp = future.result(timeout=timeout)
-            return (resp.text or "-").strip()
+            result = (resp.text or "-").strip()
+            logging.debug("Gemini analysis success")
+            return result
+    except concurrent.futures.TimeoutError:
+        logging.warning("Gemini analysis timeout after %ss", timeout)
+        return "-"
     except Exception as e:
-        logging.warning("Gemini analysis failed: %s", e)
+        logging.warning("Gemini analysis failed: %s - %s", type(e).__name__, str(e))
         return "-"
 
 
