@@ -30,7 +30,7 @@ LOG_PATHS = ["/var/log/auth.log", "/var/log/secure"]
 POLL_INTERVAL = 1.0
 
 FAIL_WINDOW_SEC = 300  # Time window for counting brute force attempts
-FAIL_THRESHOLD = 5  # Trigger alert when >= this many fails in window
+FAIL_THRESHOLD = 4  # Trigger alert when >= this many fails in window
 DEDUP_TTL = 60  # Prevent repeating duplicate alerts within N seconds
 ALERT_SESSION_OPEN = False  # Usually too noisy → keep off
 
@@ -245,12 +245,13 @@ def main():
                 q.popleft()
 
             if len(q) >= FAIL_THRESHOLD:
-                # Brute force detected
+                # Brute force detected - send alert
                 summary = (
                     f"{len(q)} gagal login dari {event['ip']} dalam {FAIL_WINDOW_SEC}s"
                 )
             else:
-                summary = f"Gagal login: {event['user']} dari {event['ip']}"
+                # Single failed login - skip alert
+                continue
 
         else:
             summary = f"{event['type']} {event.get('user')} {event.get('ip', '-')}"
