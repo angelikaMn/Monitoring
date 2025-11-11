@@ -101,7 +101,8 @@ def gemini_analysis(text: str, timeout: float = 5.0):
             future = ex.submit(model.generate_content, prompt)
             resp = future.result(timeout=timeout)
             return (resp.text or "-").strip()
-    except:
+    except Exception as e:
+        logging.warning("Gemini analysis failed: %s", e)
         return "-"
 
 
