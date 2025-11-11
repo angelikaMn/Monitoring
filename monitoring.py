@@ -21,7 +21,9 @@ FONNTE_TOKEN = os.getenv("FONNTE_TOKEN")
 FONNTE_TARGETS = os.getenv("FONNTE_TARGETS", "").split(",")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-MONITORED_USERS = [u.strip() for u in os.getenv("MONITORED_USERS", "angel").split(",") if u.strip()]
+MONITORED_USERS = [
+    u.strip() for u in os.getenv("MONITORED_USERS", "angel").split(",") if u.strip()
+]
 
 # ------------------------------------------------------------
 # Basic Config
@@ -31,7 +33,7 @@ LOG_PATHS = ["/var/log/auth.log", "/var/log/secure"]
 POLL_INTERVAL = 1.0
 
 FAIL_WINDOW_SEC = 300  # Time window for counting brute force attempts
-FAIL_THRESHOLD = 4  # Trigger alert when >= this many fails in window
+FAIL_THRESHOLD = 3  # Trigger alert when >= this many fails in window
 DEDUP_TTL = 60  # Prevent repeating duplicate alerts within N seconds
 ALERT_SESSION_OPEN = False  # Usually too noisy → keep off
 
@@ -246,7 +248,11 @@ def main():
 
         # DEDUP
         if key in last_sent and now - last_sent[key] < DEDUP_TTL:
-            logging.debug("[%s] [%s] Skipped (dedup)", event.get("ip", "-"), event.get("user", "-"))
+            logging.debug(
+                "[%s] [%s] Skipped (dedup)",
+                event.get("ip", "-"),
+                event.get("user", "-"),
+            )
             continue
 
         # Track fail attempts
@@ -259,20 +265,32 @@ def main():
 
             if len(q) >= FAIL_THRESHOLD:
                 # Brute force detected - send alert
-                logging.warning("[%s] [%s] BRUTE FORCE DETECTED - %d attempts in %ds",
-                               event["ip"], event["user"], len(q), FAIL_WINDOW_SEC)
+                logging.warning(
+                    "[%s] [%s] BRUTE FORCE DETECTED - %d attempts in %ds",
+                    event["ip"],
+                    event["user"],
+                    len(q),
+                    FAIL_WINDOW_SEC,
+                )
                 summary = (
                     f"{len(q)} gagal login dari {event['ip']} dalam {FAIL_WINDOW_SEC}s"
                 )
             else:
                 # Single failed login - skip alert
-                logging.info("[%s] [%s] Failed login attempt (%d/%d)",
-                            event["ip"], event["user"], len(q), FAIL_THRESHOLD)
+                logging.info(
+                    "[%s] [%s] Failed login attempt (%d/%d)",
+                    event["ip"],
+                    event["user"],
+                    len(q),
+                    FAIL_THRESHOLD,
+                )
                 continue
 
         else:
             if event["type"] == "success":
-                logging.info("[%s] [%s] Successful SSH login", event["ip"], event["user"])
+                logging.info(
+                    "[%s] [%s] Successful SSH login", event["ip"], event["user"]
+                )
             elif event["type"] == "session":
                 logging.info("[%s] [%s] Session opened", event["ip"], event["user"])
             summary = f"{event['type']} {event.get('user')} {event.get('ip', '-')}"
