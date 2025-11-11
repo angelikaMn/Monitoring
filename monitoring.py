@@ -121,15 +121,24 @@ def format_message(event: dict, analysis: str) -> str:
     ts = event["ts"]
 
     if msg_type == "success":
-        header = f"✅ *SSH LOGIN BERHASIL*\n[{ip}] [{user}]\nServer: {HOST}\nTime: {ts}"
+        header = "SSH LOGIN SUCCESS"
     elif msg_type == "fail":
-        header = f"⚠️ *SSH LOGIN GAGAL / BRUTE FORCE*\n[{ip}] [{user}]\nServer: {HOST}\nTime: {ts}"
+        header = "SSH LOGIN FAILED"
     elif msg_type == "session":
-        header = f"ℹ️ *SESSION OPENED*\n[{ip}] [{user}]\nServer: {HOST}\nTime: {ts}"
+        header = "SESSION OPENED"
     else:
-        header = f"[{ip}] [{user}] Event: {msg_type}"
+        header = f"SSH EVENT: {msg_type}"
 
-    return f"{header}\n\nAnalisis:\n{analysis}\n\nDetail:\n{event['raw']}"
+    body = f"""*{header}*
+
+Username: {user}
+IP: {ip}
+Time: {ts}
+
+---ANALISIS LLM---
+{analysis}"""
+
+    return body
 
 
 def parse_line(line: str):
