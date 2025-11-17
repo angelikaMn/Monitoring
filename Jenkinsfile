@@ -134,7 +134,7 @@ targets = [t.strip() for t in os.getenv("FONNTE_TARGETS","").split(',') if t.str
 hostname = socket.gethostname()
 ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-msg = f"""✅ *CI Deploy Success*
+msg = f"""✅ *Sukses Deploy CI CD*
 Server: {hostname}
 Time: {ts}"""
 
