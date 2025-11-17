@@ -1,4 +1,4 @@
-pipeline {
+  pipeline {
   agent any
   options { timestamps() }
 
@@ -9,7 +9,7 @@ pipeline {
 
   environment {
     APP_DIR = "/home/Monitoring"
-    VENV = "/home/Monitoring/.venv"
+    VENV = "${WORKSPACE}/.venv"
     SERVICE = "monitoring.service"
     SCRIPT = "monitoring.py"
   }
